@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <getopt.h>
+#include "crypto/keygen.h"
 
 void print_help(const char* program_name) {
     std::cout << "Usage: " << program_name << " [OPTIONS]\n\n"
@@ -101,15 +102,24 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Режим генерации ключа
+    if (mode == "generate-key" || gen_key) {
+        if (algorithm.empty()) {
+            std::cerr << "Error: Algorithm required for key generation\n";
+            return 1;
+        }
+        return generate_key(algorithm, save_key_file, write_key);
+    }
+
+    // Для остальных режимов пока заглушка
     std::cout << "=== Parameters ===\n";
     if (!algorithm.empty()) std::cout << "Algorithm: " << algorithm << "\n";
     if (!mode.empty())      std::cout << "Mode: " << mode << "\n";
     if (!key_file.empty())  std::cout << "Key file: " << key_file << "\n";
     if (!input_file.empty()) std::cout << "Input file: " << input_file << "\n";
     if (!output_file.empty()) std::cout << "Output file: " << output_file << "\n";
-    if (gen_key)            std::cout << "Generate key: yes\n";
-    if (!save_key_file.empty()) std::cout << "Save key to: " << save_key_file << "\n";
-    if (write_key)          std::cout << "Write key to stdout: yes\n";
+
+    std::cout << "\n[INFO] Encryption/decryption not yet implemented (coming soon)\n";
 
     return 0;
 }
