@@ -5,10 +5,13 @@
 void print_help(const char* program_name) {
     std::cout << "Usage: " << program_name << " [OPTIONS]\n\n"
               << "Multi-Algo Cryptotool - шифрование и расшифрование данных\n\n"
+              << "Supported algorithms:\n"
+              << "  gost       - ГОСТ 28147-89 (256-bit key, 64-bit block)\n"
+              << "  blowfish   - Blowfish (32-448 bit key, 64-bit block)\n\n"
               << "Options:\n"
               << "  -h, --help                 показать эту справку\n"
-              << "  -a, --algorithm ALGO       выбрать алгоритм (aes, chacha20)\n"
-              << "  -m, --mode MODE            режим: encrypt, decrypt, generate-key\n"
+              << "  -a, --algorithm ALGO       gost | blowfish\n"
+              << "  -m, --mode MODE            encrypt | decrypt | generate-key\n"
               << "  -k, --key FILE             ключ из файла\n"
               << "  -i, --input FILE           входной файл\n"
               << "  -o, --output FILE          выходной файл\n"
@@ -17,8 +20,9 @@ void print_help(const char* program_name) {
               << "      --write-key            записать ключ в stdout\n\n"
               << "Examples:\n"
               << "  " << program_name << " --help\n"
-              << "  " << program_name << " -a chacha20 -m generate-key --save-key key.bin\n"
-              << "  " << program_name << " -a aes -m encrypt -k key.bin -i data.txt -o data.enc\n";
+              << "  " << program_name << " -a gost -m generate-key --save-key key.bin\n"
+              << "  " << program_name << " -a blowfish -m encrypt -k key.bin -i data -o data.enc\n"
+              << "  " << program_name << " -a gost -m decrypt -k key.bin -i data.enc -o data\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -81,6 +85,20 @@ int main(int argc, char* argv[]) {
                 print_help(argv[0]);
                 return 1;
         }
+    }
+
+    // Валидация алгоритма
+    if (!algorithm.empty() && algorithm != "gost" && algorithm != "blowfish") {
+        std::cerr << "Error: Unsupported algorithm '" << algorithm << "'\n";
+        std::cerr << "Supported: gost, blowfish\n";
+        return 1;
+    }
+
+    // Валидация режима
+    if (!mode.empty() && mode != "encrypt" && mode != "decrypt" && mode != "generate-key") {
+        std::cerr << "Error: Unsupported mode '" << mode << "'\n";
+        std::cerr << "Supported: encrypt, decrypt, generate-key\n";
+        return 1;
     }
 
     std::cout << "=== Parameters ===\n";
