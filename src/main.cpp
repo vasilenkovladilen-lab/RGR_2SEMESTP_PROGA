@@ -18,10 +18,11 @@ void print_help(const char* program_name) {
               << "  -o, --output FILE          выходной файл\n"
               << "      --generate-key         сгенерировать ключ\n"
               << "      --save-key FILE        сохранить ключ в файл\n"
-              << "      --write-key            записать ключ в stdout\n\n"
+              << "      --write-key            записать ключ в stdout\n"
+              << "      --show-key-hex         показать ключ в hex-формате\n\n"
               << "Examples:\n"
               << "  " << program_name << " --help\n"
-              << "  " << program_name << " -a gost -m generate-key --save-key key.bin\n"
+              << "  " << program_name << " -a gost -m generate-key --save-key key.bin --show-key-hex\n"
               << "  " << program_name << " -a blowfish -m encrypt -k key.bin -i data -o data.enc\n"
               << "  " << program_name << " -a gost -m decrypt -k key.bin -i data.enc -o data\n";
 }
@@ -42,6 +43,7 @@ int main(int argc, char* argv[]) {
         {"generate-key",no_argument,       0, 1000},
         {"save-key",    required_argument, 0, 1001},
         {"write-key",   no_argument,       0, 1002},
+        {"show-key-hex",no_argument,       0, 1003},
         {0, 0, 0, 0}
     };
 
@@ -49,6 +51,7 @@ int main(int argc, char* argv[]) {
     bool gen_key = false;
     std::string save_key_file;
     bool write_key = false;
+    bool show_key_hex = false;
 
     int opt;
     int option_index = 0;
@@ -82,6 +85,9 @@ int main(int argc, char* argv[]) {
             case 1002:
                 write_key = true;
                 break;
+            case 1003:
+                show_key_hex = true;
+                break;
             default:
                 print_help(argv[0]);
                 return 1;
@@ -108,7 +114,7 @@ int main(int argc, char* argv[]) {
             std::cerr << "Error: Algorithm required for key generation\n";
             return 1;
         }
-        return generate_key(algorithm, save_key_file, write_key);
+        return generate_key(algorithm, save_key_file, write_key, show_key_hex);
     }
 
     // Для остальных режимов пока заглушка
@@ -119,7 +125,7 @@ int main(int argc, char* argv[]) {
     if (!input_file.empty()) std::cout << "Input file: " << input_file << "\n";
     if (!output_file.empty()) std::cout << "Output file: " << output_file << "\n";
 
-    std::cout << "\n[INFO] Encryption/decryption not yet implemented (coming soon)\n";
+    std::cout << "\n[INFO] Encryption/decryption not yet implemented\n";
 
     return 0;
 }

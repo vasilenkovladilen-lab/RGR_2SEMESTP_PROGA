@@ -1,40 +1,60 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <random>
-#include <chrono>
 #include <cstring>
+#include <cstdint>
+#include <cstdio>
+#include <unistd.h>
+#include <sys/types.h>
+#include <fcntl.h>
 
-// Криптостойкий генератор случайных чисел
 class SecureRandom {
 private:
-    std::random_device rd;
-    std::mt19937_64 gen;
-    std::uniform_int_distribution<uint8_t> dist;
-
+    int fd;
 public:
-    SecureRandom() : gen(rd()) {}
+    SecureRandom() {
+        fd = open("/dev/urandom", O_RDONLY);
+        if (fd < 0) {
+            std::cerr << "Error: Cannot open /dev/urandom" << std::endl;
+            exit(1);
+        }
+    }
     
-    uint8_t get_byte() {
-        return dist(gen);
+    ~SecureRandom() {
+        if (fd >= 0) close(fd);
     }
     
     void fill_bytes(uint8_t* buffer, size_t size) {
-        for (size_t i = 0; i < size; i++) {
-            buffer[i] = get_byte();
+        size_t bytes_read = 0;
+        while (bytes_read < size) {
+            ssize_t result = read(fd, buffer + bytes_read, size - bytes_read);
+            if (result <= 0) {
+                std::cerr << "Error: Failed to read from /dev/urandom" << std::endl;
+                exit(1);
+            }
+            bytes_read += result;
         }
     }
 };
 
-// Генерация ключа для ГОСТ 28147-89 (32 байта = 256 бит)
+void print_key_hex(const std::vector<uint8_t>& key) {
+    std::cerr << "Key (hex): ";
+    for (size_t i = 0; i < key.size(); i++) {
+        printf("%02x", key[i]);
+        if ((i + 1) % 8 == 0 && i + 1 < key.size()) {
+            std::cerr << " ";
+        }
+    }
+    std::cerr << std::endl;
+}
+
 std::vector<uint8_t> generate_gost_key() {
-    std::vector<uint8_t> key(32);  // 256 бит
+    std::vector<uint8_t> key(32);
     SecureRandom rng;
     rng.fill_bytes(key.data(), key.size());
     return key;
 }
 
-// Генерация ключа для Blowfish (16 байт по умолчанию, можно менять)
 std::vector<uint8_t> generate_blowfish_key(size_t size = 16) {
     if (size < 4) size = 4;
     if (size > 56) size = 56;
@@ -45,7 +65,13 @@ std::vector<uint8_t> generate_blowfish_key(size_t size = 16) {
     return key;
 }
 
-// Сохранение ключа в файл
+void secure_zero(uint8_t* data, size_t size) {
+    volatile uint8_t* p = (volatile uint8_t*)data;
+    for (size_t i = 0; i < size; i++) {
+        p[i] = 0;
+    }
+}
+
 bool save_key_to_file(const std::vector<uint8_t>& key, const std::string& filename) {
     std::ofstream file(filename, std::ios::binary);
     if (!file) {
@@ -61,16 +87,16 @@ bool save_key_to_file(const std::vector<uint8_t>& key, const std::string& filena
     return true;
 }
 
-// Вывод ключа в stdout (для pipe)
 void write_key_to_stdout(const std::vector<uint8_t>& key) {
     std::cout.write(reinterpret_cast<const char*>(key.data()), key.size());
+    std::cout.flush();
     std::cerr << "Key written to stdout (" << key.size() << " bytes)" << std::endl;
 }
 
-// Функция для использования из main
 int generate_key(const std::string& algorithm, 
                  const std::string& save_file, 
-                 bool write_to_stdout) {
+                 bool write_to_stdout,
+                 bool show_hex) {
     
     std::vector<uint8_t> key;
     
@@ -79,7 +105,7 @@ int generate_key(const std::string& algorithm,
         std::cerr << "Generated GOST 28147-89 key: " << key.size() << " bytes" << std::endl;
     } 
     else if (algorithm == "blowfish") {
-        key = generate_blowfish_key(16);  // 128 бит по умолчанию
+        key = generate_blowfish_key(16);
         std::cerr << "Generated Blowfish key: " << key.size() << " bytes" << std::endl;
     } 
     else {
@@ -87,7 +113,10 @@ int generate_key(const std::string& algorithm,
         return 1;
     }
     
-    // Сохранение или вывод
+    if (show_hex) {
+        print_key_hex(key);
+    }
+    
     if (write_to_stdout) {
         write_key_to_stdout(key);
     }
@@ -102,6 +131,8 @@ int generate_key(const std::string& algorithm,
         std::cerr << "Error: No output method specified for key (use --save-key or --write-key)" << std::endl;
         return 1;
     }
+    
+    secure_zero(key.data(), key.size());
     
     return 0;
 }
