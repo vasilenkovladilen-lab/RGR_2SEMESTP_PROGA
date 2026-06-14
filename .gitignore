@@ -1,0 +1,12 @@
+build/
+*.o
+*.so
+*.dll
+*.exe
+*.bin
+*.enc
+*.key
+*.out
+.DS_Store
+.vscode/
+*.swp
