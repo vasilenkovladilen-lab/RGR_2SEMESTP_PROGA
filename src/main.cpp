@@ -135,7 +135,7 @@ AlgoInfo algo_infos[] = {
 
 void print_header() {
     std::cout << "==========================================\n";
-    std::cout << "    🔐 CRYPTUM - Multi-Algo Cryptotool\n";
+    std::cout << "     CRYPTUM - Multi-Algo Cryptotool\n";
     std::cout << "==========================================\n";
     std::cout << "Текущий алгоритм: " << algo_infos[static_cast<int>(selected_algo)].name << "\n";
     std::cout << "==========================================\n";
