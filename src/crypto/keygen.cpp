@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -107,7 +108,11 @@ int generate_key(const std::string& algorithm,
     else if (algorithm == "blowfish") {
         key = generate_blowfish_key(16);
         std::cerr << "Generated Blowfish key: " << key.size() << " bytes" << std::endl;
-    } 
+    }
+    else if (algorithm == "dummy") {
+        key = std::vector<uint8_t>(16, 0x42);
+        std::cerr << "Generated DUMMY key: " << key.size() << " bytes" << std::endl;
+    }
     else {
         std::cerr << "Error: Unknown algorithm for key generation: " << algorithm << std::endl;
         return 1;

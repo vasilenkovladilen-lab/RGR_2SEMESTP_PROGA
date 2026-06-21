@@ -1,17 +1,21 @@
 #include <iostream>
 #include <string>
 #include <getopt.h>
+#include <vector>
+#include <fstream>
 #include "crypto/keygen.h"
+#include "plugin/plugin_loader.h"
 
 void print_help(const char* program_name) {
     std::cout << "Usage: " << program_name << " [OPTIONS]\n\n"
               << "Multi-Algo Cryptotool - шифрование и расшифрование данных\n\n"
               << "Supported algorithms:\n"
               << "  gost       - ГОСТ 28147-89 (256-bit key, 64-bit block)\n"
-              << "  blowfish   - Blowfish (32-448 bit key, 64-bit block)\n\n"
+              << "  blowfish   - Blowfish (32-448 bit key, 64-bit block)\n"
+              << "  dummy      - Тестовый алгоритм (для отладки)\n\n"
               << "Options:\n"
               << "  -h, --help                 показать эту справку\n"
-              << "  -a, --algorithm ALGO       gost | blowfish\n"
+              << "  -a, --algorithm ALGO       gost | blowfish | dummy\n"
               << "  -m, --mode MODE            encrypt | decrypt | generate-key\n"
               << "  -k, --key FILE             ключ из файла\n"
               << "  -i, --input FILE           входной файл\n"
@@ -23,8 +27,40 @@ void print_help(const char* program_name) {
               << "Examples:\n"
               << "  " << program_name << " --help\n"
               << "  " << program_name << " -a gost -m generate-key --save-key key.bin --show-key-hex\n"
-              << "  " << program_name << " -a blowfish -m encrypt -k key.bin -i data -o data.enc\n"
-              << "  " << program_name << " -a gost -m decrypt -k key.bin -i data.enc -o data\n";
+              << "  " << program_name << " -a dummy -m encrypt -k dummy_key.bin -i test.txt -o test.enc\n"
+              << "  " << program_name << " -a dummy -m decrypt -k dummy_key.bin -i test.enc -o test.dec\n";
+}
+
+std::vector<uint8_t> load_key_from_file(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Error: Cannot open key file: " << filename << std::endl;
+        return {};
+    }
+    std::vector<uint8_t> key((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    return key;
+}
+
+std::vector<uint8_t> load_input(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Error: Cannot open input file: " << filename << std::endl;
+        return {};
+    }
+    std::vector<uint8_t> data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::cerr << "Loaded " << data.size() << " bytes from " << filename << std::endl;
+    return data;
+}
+
+bool save_output(const std::vector<uint8_t>& data, const std::string& filename) {
+    std::ofstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Error: Cannot open output file: " << filename << std::endl;
+        return false;
+    }
+    file.write(reinterpret_cast<const char*>(data.data()), data.size());
+    std::cerr << "Saved " << data.size() << " bytes to " << filename << std::endl;
+    return true;
 }
 
 int main(int argc, char* argv[]) {
@@ -94,21 +130,12 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Валидация алгоритма
-    if (!algorithm.empty() && algorithm != "gost" && algorithm != "blowfish") {
+    if (!algorithm.empty() && algorithm != "gost" && algorithm != "blowfish" && algorithm != "dummy") {
         std::cerr << "Error: Unsupported algorithm '" << algorithm << "'\n";
-        std::cerr << "Supported: gost, blowfish\n";
+        std::cerr << "Supported: gost, blowfish, dummy\n";
         return 1;
     }
 
-    // Валидация режима
-    if (!mode.empty() && mode != "encrypt" && mode != "decrypt" && mode != "generate-key") {
-        std::cerr << "Error: Unsupported mode '" << mode << "'\n";
-        std::cerr << "Supported: encrypt, decrypt, generate-key\n";
-        return 1;
-    }
-
-    // Режим генерации ключа
     if (mode == "generate-key" || gen_key) {
         if (algorithm.empty()) {
             std::cerr << "Error: Algorithm required for key generation\n";
@@ -116,16 +143,76 @@ int main(int argc, char* argv[]) {
         }
         return generate_key(algorithm, save_key_file, write_key, show_key_hex);
     }
-
-    // Для остальных режимов пока заглушка
-    std::cout << "=== Parameters ===\n";
-    if (!algorithm.empty()) std::cout << "Algorithm: " << algorithm << "\n";
-    if (!mode.empty())      std::cout << "Mode: " << mode << "\n";
-    if (!key_file.empty())  std::cout << "Key file: " << key_file << "\n";
-    if (!input_file.empty()) std::cout << "Input file: " << input_file << "\n";
-    if (!output_file.empty()) std::cout << "Output file: " << output_file << "\n";
-
-    std::cout << "\n[INFO] Encryption/decryption not yet implemented\n";
-
-    return 0;
+    
+    if (mode == "encrypt" || mode == "decrypt") {
+        if (algorithm.empty()) {
+            std::cerr << "Error: Algorithm required for encryption/decryption\n";
+            return 1;
+        }
+        
+        if (key_file.empty()) {
+            std::cerr << "Error: Key file required (--key)\n";
+            return 1;
+        }
+        
+        if (input_file.empty()) {
+            std::cerr << "Error: Input file required (--input)\n";
+            return 1;
+        }
+        
+        if (output_file.empty()) {
+            std::cerr << "Error: Output file required (--output)\n";
+            return 1;
+        }
+        
+        std::vector<uint8_t> key = load_key_from_file(key_file);
+        if (key.empty()) return 1;
+        
+        std::vector<uint8_t> input_data = load_input(input_file);
+        if (input_data.empty()) return 1;
+        
+        PluginLoader loader;
+        if (!loader.load_plugin(algorithm)) {
+            std::cerr << "Error: Failed to load plugin for algorithm: " << algorithm << std::endl;
+            return 1;
+        }
+        
+        const AlgorithmInfo* info = loader.get_algorithm_info();
+        if (info && key.size() != info->key_size) {
+            std::cerr << "Error: Invalid key size. Expected " << info->key_size 
+                      << " bytes, got " << key.size() << std::endl;
+            return 1;
+        }
+        
+        int op_type = (mode == "encrypt") ? OP_ENCRYPT : OP_DECRYPT;
+        size_t output_size = loader.get_output_size(input_data.size(), op_type);
+        
+        std::vector<uint8_t> output_data(output_size);
+        MutBuffer out_buf = { output_data.data(), output_data.size() };
+        ConstBuffer key_buf = { key.data(), key.size() };
+        ConstBuffer in_buf = { input_data.data(), input_data.size() };
+        
+        int result;
+        if (mode == "encrypt") {
+            result = loader.encrypt(key_buf, in_buf, &out_buf);
+        } else {
+            result = loader.decrypt(key_buf, in_buf, &out_buf);
+        }
+        
+        if (result != 0) {
+            std::cerr << "Error: Cryptographic operation failed (code " << result << ")" << std::endl;
+            return 1;
+        }
+        
+        output_data.resize(out_buf.size);
+        if (!save_output(output_data, output_file)) {
+            return 1;
+        }
+        
+        std::cerr << "Operation completed successfully" << std::endl;
+        return 0;
+    }
+    
+    std::cerr << "Error: Unknown mode or missing parameters. Use --help for usage." << std::endl;
+    return 1;
 }
