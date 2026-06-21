@@ -23,7 +23,7 @@ bool remove_padding(std::vector<uint8_t>& data) {
     if (data.empty()) return false;
     
     uint8_t padding_len = data.back();
-    if (padding_len == 0 || padding_len > data.size() || padding_len > 255) {
+    if (padding_len == 0 || padding_len > data.size()) {
         return false;
     }
     
@@ -55,6 +55,9 @@ extern "C" size_t get_output_size(size_t input_size, int operation_type) {
         return input_size;
     }
 }
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 extern "C" int encrypt(ConstBuffer key, ConstBuffer input, MutBuffer* output) {
     if (key.size != 16) {
@@ -118,3 +121,5 @@ extern "C" int decrypt(ConstBuffer key, ConstBuffer input, MutBuffer* output) {
     
     return 0;
 }
+
+#pragma GCC diagnostic pop

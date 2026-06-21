@@ -5,10 +5,6 @@
 #include <string>
 #include <cstdint>
 
-// ============================================================
-// Шифр Атбаша (Atbash)
-// ============================================================
-
 static std::vector<uint8_t> atbash_encrypt_decrypt(const uint8_t* data, size_t size) 
 {
     std::vector<uint8_t> result(data, data + size);
@@ -17,7 +13,6 @@ static std::vector<uint8_t> atbash_encrypt_decrypt(const uint8_t* data, size_t s
     {
         char c = static_cast<char>(result[i]);
         
-        // A <-> Z, B <-> Y, C <-> X, ...
         if (c >= 'A' && c <= 'Z') 
         {
             result[i] = static_cast<uint8_t>('Z' - (c - 'A'));
@@ -26,20 +21,15 @@ static std::vector<uint8_t> atbash_encrypt_decrypt(const uint8_t* data, size_t s
         {
             result[i] = static_cast<uint8_t>('z' - (c - 'a'));
         }
-        // Остальные символы не меняем
     }
     
     return result;
 }
 
-// ============================================================
-// Интерфейс плагина
-// ============================================================
-
 static AlgorithmInfo info = {
     "atbash",
-    0,  // ключ не нужен
-    0   // размер блока не используется
+    0,
+    0
 };
 
 extern "C" const AlgorithmInfo* get_algorithm_info() 
@@ -47,15 +37,13 @@ extern "C" const AlgorithmInfo* get_algorithm_info()
     return &info;
 }
 
-extern "C" size_t get_output_size(size_t input_size, int operation_type) 
+extern "C" size_t get_output_size(size_t input_size, int) 
 {
-    // Размер не меняется
     return input_size;
 }
 
 extern "C" int encrypt(ConstBuffer key, ConstBuffer input, MutBuffer* output) 
 {
-    // Ключ не используется, но проверим что он пустой
     if (key.size != 0) 
     {
         std::cerr << "Atbash: Key should be empty (no key needed)" << std::endl;
@@ -78,7 +66,6 @@ extern "C" int encrypt(ConstBuffer key, ConstBuffer input, MutBuffer* output)
 
 extern "C" int decrypt(ConstBuffer key, ConstBuffer input, MutBuffer* output) 
 {
-    // Для Атбаша шифрование и расшифрование одинаковы
     if (key.size != 0) 
     {
         std::cerr << "Atbash: Key should be empty (no key needed)" << std::endl;

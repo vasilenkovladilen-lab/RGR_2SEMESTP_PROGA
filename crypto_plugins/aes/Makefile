@@ -1,13 +1,13 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -fPIC -shared
 
-all: libdummy.so
+all: libaes.so
 
-libdummy.so: plugin.cpp
+libaes.so: plugin.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 clean:
-	rm -f libdummy.so
+	rm -f libaes.so
 
 install: all
-	cp libdummy.so ../../
+	cp libaes.so ../../

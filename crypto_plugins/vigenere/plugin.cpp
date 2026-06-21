@@ -5,19 +5,15 @@
 #include <string>
 #include <cstdint>
 
-// ============================================================
-// Шифр Виженера (Vigenère Cipher)
-// ============================================================
-
 static std::string parse_key(const uint8_t* key_data, size_t key_size) 
 {
     std::string key_str;
     for (size_t i = 0; i < key_size; i++) {
         char c = static_cast<char>(key_data[i]);
         if (c >= 'A' && c <= 'Z') {
-            key_str.push_back(c - 'A'); // 0-25
+            key_str.push_back(c - 'A');
         } else if (c >= 'a' && c <= 'z') {
-            key_str.push_back(c - 'a'); // 0-25
+            key_str.push_back(c - 'a');
         }
     }
     return key_str;
@@ -77,10 +73,6 @@ static std::vector<uint8_t> vigenere_decrypt(const uint8_t* data, size_t size, c
     return result;
 }
 
-// ============================================================
-// Интерфейс плагина
-// ============================================================
-
 static AlgorithmInfo info = {
     "vigenere",
     0,
@@ -92,7 +84,7 @@ extern "C" const AlgorithmInfo* get_algorithm_info()
     return &info;
 }
 
-extern "C" size_t get_output_size(size_t input_size, int operation_type) 
+extern "C" size_t get_output_size(size_t input_size, int) 
 {
     return input_size;
 }
