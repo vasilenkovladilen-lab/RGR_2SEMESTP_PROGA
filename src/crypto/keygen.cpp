@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -65,33 +66,6 @@ std::vector<uint8_t> generate_blowfish_key(size_t size = 16) {
     return key;
 }
 
-std::vector<uint8_t> generate_aes_key() {
-    std::vector<uint8_t> key(16);
-    SecureRandom rng;
-    rng.fill_bytes(key.data(), key.size());
-    return key;
-}
-
-std::vector<uint8_t> generate_gronsfeld_key() {
-    std::vector<uint8_t> key(8);
-    SecureRandom rng;
-    rng.fill_bytes(key.data(), key.size());
-    for (size_t i = 0; i < key.size(); i++) {
-        key[i] = (key[i] % 10) + '0';
-    }
-    return key;
-}
-
-std::vector<uint8_t> generate_vigenere_key() {
-    std::vector<uint8_t> key(16);
-    SecureRandom rng;
-    rng.fill_bytes(key.data(), key.size());
-    for (size_t i = 0; i < key.size(); i++) {
-        key[i] = (key[i] % 26) + 'A';
-    }
-    return key;
-}
-
 void secure_zero(uint8_t* data, size_t size) {
     volatile uint8_t* p = (volatile uint8_t*)data;
     for (size_t i = 0; i < size; i++) {
@@ -135,34 +109,9 @@ int generate_key(const std::string& algorithm,
         key = generate_blowfish_key(16);
         std::cerr << "Generated Blowfish key: " << key.size() << " bytes" << std::endl;
     }
-    else if (algorithm == "aes") {
-        key = generate_aes_key();
-        std::cerr << "Generated AES key: " << key.size() << " bytes (128-bit)" << std::endl;
-    }
-    else if (algorithm == "gronsfeld") {
-        key = generate_gronsfeld_key();
-        std::cerr << "Generated Gronsfeld key: " << key.size() << " bytes (digits)" << std::endl;
-    }
-    else if (algorithm == "vigenere") {
-        key = generate_vigenere_key();
-        std::cerr << "Generated Vigenere key: " << key.size() << " bytes (letters)" << std::endl;
-    }
     else if (algorithm == "dummy") {
         key = std::vector<uint8_t>(16, 0x42);
         std::cerr << "Generated DUMMY key: " << key.size() << " bytes" << std::endl;
-    }
-    else if (algorithm == "atbash") {
-        std::cerr << "Atbash does not need a key (no key generated)" << std::endl;
-        if (show_hex) {
-            std::cerr << "Atbash: no key" << std::endl;
-        }
-        if (!save_file.empty()) {
-            std::cerr << "Warning: Atbash doesn't need a key, ignoring --save-key" << std::endl;
-        }
-        if (write_to_stdout) {
-            std::cerr << "Warning: Atbash doesn't need a key, ignoring --write-key" << std::endl;
-        }
-        return 0;
     }
     else {
         std::cerr << "Error: Unknown algorithm for key generation: " << algorithm << std::endl;
@@ -183,7 +132,7 @@ int generate_key(const std::string& algorithm,
         }
     }
     
-    if (!write_to_stdout && save_file.empty() && !key.empty()) {
+    if (!write_to_stdout && save_file.empty()) {
         std::cerr << "Error: No output method specified for key (use --save-key or --write-key)" << std::endl;
         return 1;
     }

@@ -3,114 +3,418 @@
 #include <getopt.h>
 #include <vector>
 #include <fstream>
-#include <sstream>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <cctype>
+#include <algorithm>
 #include "crypto/keygen.h"
 #include "plugin/plugin_loader.h"
 
 // ============================================================
-// Enums для алгоритмов и режимов
+// КЛАССИЧЕСКИЕ ШИФРЫ (для текста)
+// ============================================================
+
+std::string atbash_encrypt(const std::string& text) {
+    std::string result = text;
+    for (char& c : result) {
+        if (isalpha(c)) {
+            char base = isupper(c) ? 'A' : 'a';
+            c = char(base + 25 - (c - base));
+        }
+    }
+    return result;
+}
+
+std::string gronsfeld_encrypt(const std::string& text, const std::string& key) {
+    std::string result = text;
+    size_t key_pos = 0;
+    for (char& c : result) {
+        if (isalpha(c)) {
+            char base = isupper(c) ? 'A' : 'a';
+            int shift = key[key_pos % key.length()] - '0';
+            c = char(base + (c - base + shift) % 26);
+            key_pos++;
+        }
+    }
+    return result;
+}
+
+std::string gronsfeld_decrypt(const std::string& text, const std::string& key) {
+    std::string result = text;
+    size_t key_pos = 0;
+    for (char& c : result) {
+        if (isalpha(c)) {
+            char base = isupper(c) ? 'A' : 'a';
+            int shift = key[key_pos % key.length()] - '0';
+            c = char(base + (c - base - shift + 26) % 26);
+            key_pos++;
+        }
+    }
+    return result;
+}
+
+std::string vigenere_encrypt(const std::string& text, const std::string& key) {
+    std::string result = text;
+    size_t key_pos = 0;
+    for (char& c : result) {
+        if (isalpha(c)) {
+            char base = isupper(c) ? 'A' : 'a';
+            char k_base = isupper(key[key_pos % key.length()]) ? 'A' : 'a';
+            int shift = (key[key_pos % key.length()] - k_base);
+            c = char(base + (c - base + shift) % 26);
+            key_pos++;
+        }
+    }
+    return result;
+}
+
+std::string vigenere_decrypt(const std::string& text, const std::string& key) {
+    std::string result = text;
+    size_t key_pos = 0;
+    for (char& c : result) {
+        if (isalpha(c)) {
+            char base = isupper(c) ? 'A' : 'a';
+            char k_base = isupper(key[key_pos % key.length()]) ? 'A' : 'a';
+            int shift = (key[key_pos % key.length()] - k_base);
+            c = char(base + (c - base - shift + 26) % 26);
+            key_pos++;
+        }
+    }
+    return result;
+}
+
+// ============================================================
+// УТИЛИТЫ
+// ============================================================
+
+void clear_screen() {
+    system("clear");
+}
+
+void wait_for_enter() {
+    std::cout << "\nНажмите Enter для продолжения...";
+    std::cin.ignore();
+    std::cin.get();
+}
+
+// ============================================================
+// ENUM CLASS (UpperCamelCase по ТЗ п. 4.4.4.3)
 // ============================================================
 
 enum class Algorithm {
-    GOST,
-    BLOWFISH,
-    AES,
-    ATBASH,
-    GRONSFELD,
-    VIGENERE,
-    UNKNOWN
+    Atbash = 1,
+    Gronsfeld = 2,
+    Vigenere = 3,
+    Gost = 4,
+    Blowfish = 5,
+    Aes = 6
 };
 
-enum class Mode {
-    ENCRYPT,
-    DECRYPT,
-    GENERATE_KEY,
-    UNKNOWN
+// ============================================================
+// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
+// ============================================================
+
+Algorithm selected_algo = Algorithm::Gost;
+
+struct AlgoInfo {
+    std::string name;
+    std::string plugin_name;
 };
 
-static const char* PLUGIN_DIR = "./algorithms";
+AlgoInfo algo_infos[] = {
+    {"", ""},
+    {"Шифр Атбаш", ""},
+    {"Шифр Гронсфельда", ""},
+    {"Шифр Виженера", ""},
+    {"ГОСТ 28147-89", "gost"},
+    {"Blowfish", "blowfish"},
+    {"AES-128", "aes"}
+};
 
 // ============================================================
-// Проверка плагинов
+// МЕНЮ
 // ============================================================
 
-bool check_plugins_exist() {
-    DIR* dir = opendir(PLUGIN_DIR);
-    if (!dir) return false;
+void print_header() {
+    std::cout << "==========================================\n";
+    std::cout << "    🔐 CRYPTUM - Multi-Algo Cryptotool\n";
+    std::cout << "==========================================\n";
+    std::cout << "Текущий алгоритм: " << algo_infos[static_cast<int>(selected_algo)].name << "\n";
+    std::cout << "==========================================\n";
+}
+
+void print_algorithms() {
+    clear_screen();
+    std::cout << "=== ВЫБОР АЛГОРИТМА ===\n";
+    std::cout << "1. Шифр Атбаш\n";
+    std::cout << "2. Шифр Гронсфельда\n";
+    std::cout << "3. Шифр Виженера\n";
+    std::cout << "4. ГОСТ 28147-89\n";
+    std::cout << "5. Blowfish\n";
+    std::cout << "6. AES-128\n";
+    std::cout << "Выберите алгоритм (1-6): ";
+}
+
+bool is_classic_algorithm(Algorithm algo) {
+    return algo == Algorithm::Atbash ||
+           algo == Algorithm::Gronsfeld ||
+           algo == Algorithm::Vigenere;
+}
+
+bool is_plugin_algorithm(Algorithm algo) {
+    return algo == Algorithm::Gost ||
+           algo == Algorithm::Blowfish ||
+           algo == Algorithm::Aes;
+}
+
+std::string get_plugin_name(Algorithm algo) {
+    return algo_infos[static_cast<int>(algo)].plugin_name;
+}
+
+void text_operation() {
+    clear_screen();
+    print_header();
+    std::cout << "1. Зашифровать текст\n";
+    std::cout << "2. Расшифровать текст\n";
+    std::cout << "Ваш выбор: ";
     
-    struct dirent* entry;
-    bool has_plugin = false;
-    while ((entry = readdir(dir)) != nullptr) {
-        std::string name = entry->d_name;
-        if (name.length() > 3 && name.substr(name.length() - 3) == ".so") {
-            has_plugin = true;
-            break;
-        }
-    }
-    closedir(dir);
-    return has_plugin;
-}
-
-bool create_plugin_directory() {
-    return (mkdir(PLUGIN_DIR, 0755) == 0);
-}
-
-void print_welcome() {
-    std::cout << "Добро пожаловать!" << std::endl;
-    std::cout << "Загрузка алгоритмов из папки " << PLUGIN_DIR << "/..." << std::endl;
+    int choice;
+    std::cin >> choice;
+    std::cin.ignore();
     
-    if (!check_plugins_exist()) {
-        if (create_plugin_directory()) {
-            std::cout << "Создана папка " << PLUGIN_DIR << std::endl;
-        }
-        std::cout << "Поместите .so файлы алгоритмов в эту папку и перезапустите программу." << std::endl;
-        std::cout << "Завершение работы." << std::endl;
-        exit(0);
+    std::string text, key;
+    std::cout << "Введите текст: ";
+    std::getline(std::cin, text);
+    
+    std::string result;
+    
+    if (selected_algo == Algorithm::Atbash) {
+        result = atbash_encrypt(text);
+    }
+    else if (selected_algo == Algorithm::Gronsfeld) {
+        std::cout << "Введите ключ (цифры, например 12345): ";
+        std::getline(std::cin, key);
+        if (choice == 1) result = gronsfeld_encrypt(text, key);
+        else result = gronsfeld_decrypt(text, key);
+    }
+    else if (selected_algo == Algorithm::Vigenere) {
+        std::cout << "Введите ключ-слово: ";
+        std::getline(std::cin, key);
+        std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+        if (choice == 1) result = vigenere_encrypt(text, key);
+        else result = vigenere_decrypt(text, key);
+    }
+    else {
+        std::cout << "Этот алгоритм работает только с ФАЙЛАМИ.\n";
+        std::cout << "Используйте пункт меню 2 для работы с файлами.\n";
+        wait_for_enter();
+        return;
     }
     
-    std::cout << "Найдены алгоритмы:" << std::endl;
-    DIR* dir = opendir(PLUGIN_DIR);
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        std::string name = entry->d_name;
-        if (name.length() > 3 && name.substr(name.length() - 3) == ".so") {
-            std::cout << "  - " << name.substr(0, name.length() - 3) << std::endl;
-        }
+    clear_screen();
+    print_header();
+    std::cout << "=== РЕЗУЛЬТАТ ===\n";
+    std::cout << (choice == 1 ? "ЗАШИФРОВАННЫЙ" : "РАСШИФРОВАННЫЙ") << " ТЕКСТ:\n";
+    std::cout << result << "\n";
+    wait_for_enter();
+}
+
+void file_operation_with_plugin(const std::string& plugin_name, int choice) {
+    std::string key_file, input_file, output_file;
+    std::cout << "Введите путь к файлу с ключом: ";
+    std::getline(std::cin, key_file);
+    std::cout << "Введите путь к входному файлу: ";
+    std::getline(std::cin, input_file);
+    std::cout << "Введите путь к выходному файлу: ";
+    std::getline(std::cin, output_file);
+    
+    std::ifstream kf(key_file, std::ios::binary);
+    if (!kf) {
+        std::cerr << "Ошибка: не удалось открыть ключ\n";
+        wait_for_enter();
+        return;
     }
-    closedir(dir);
-    std::cout << std::endl;
+    std::vector<uint8_t> key((std::istreambuf_iterator<char>(kf)), std::istreambuf_iterator<char>());
+    kf.close();
+    
+    std::ifstream inf(input_file, std::ios::binary);
+    if (!inf) {
+        std::cerr << "Ошибка: не удалось открыть входной файл\n";
+        wait_for_enter();
+        return;
+    }
+    std::vector<uint8_t> input_data((std::istreambuf_iterator<char>(inf)), std::istreambuf_iterator<char>());
+    inf.close();
+    std::cerr << "Загружено " << input_data.size() << " байт\n";
+    
+    PluginLoader loader;
+    if (!loader.load_plugin(plugin_name)) {
+        std::cerr << "Ошибка: не удалось загрузить плагин " << plugin_name << "\n";
+        wait_for_enter();
+        return;
+    }
+    
+    const AlgorithmInfo* info = loader.get_algorithm_info();
+    if (info && key.size() != info->key_size) {
+        std::cerr << "Ошибка: неверный размер ключа (ожидается " << info->key_size << " байт)\n";
+        wait_for_enter();
+        return;
+    }
+    
+    int op_type = (choice == 1) ? OP_ENCRYPT : OP_DECRYPT;
+    size_t output_size = loader.get_output_size(input_data.size(), op_type);
+    
+    std::vector<uint8_t> output_data(output_size);
+    MutBuffer out_buf = { output_data.data(), output_data.size() };
+    ConstBuffer key_buf = { key.data(), key.size() };
+    ConstBuffer in_buf = { input_data.data(), input_data.size() };
+    
+    int result;
+    if (choice == 1) {
+        result = loader.encrypt(key_buf, in_buf, &out_buf);
+    } else {
+        result = loader.decrypt(key_buf, in_buf, &out_buf);
+    }
+    
+    if (result != 0) {
+        std::cerr << "Ошибка: операция не удалась (код " << result << ")\n";
+        wait_for_enter();
+        return;
+    }
+    
+    output_data.resize(out_buf.size);
+    std::ofstream outf(output_file, std::ios::binary);
+    outf.write(reinterpret_cast<const char*>(output_data.data()), output_data.size());
+    outf.close();
+    
+    std::cout << "Результат сохранён в: " << output_file << "\n";
+    wait_for_enter();
+}
+
+void file_operation() {
+    clear_screen();
+    print_header();
+    std::cout << "1. Зашифровать файл\n";
+    std::cout << "2. Расшифровать файл\n";
+    std::cout << "Ваш выбор: ";
+    
+    int choice;
+    std::cin >> choice;
+    std::cin.ignore();
+    
+    if (is_classic_algorithm(selected_algo)) {
+        std::string input_file, output_file, key;
+        std::cout << "Введите путь к входному файлу: ";
+        std::getline(std::cin, input_file);
+        std::cout << "Введите путь к выходному файлу: ";
+        std::getline(std::cin, output_file);
+        
+        std::ifstream in(input_file);
+        if (!in) {
+            std::cerr << "Ошибка: не удалось открыть файл\n";
+            wait_for_enter();
+            return;
+        }
+        std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        in.close();
+        
+        std::string result;
+        if (selected_algo == Algorithm::Atbash) {
+            result = atbash_encrypt(text);
+        }
+        else if (selected_algo == Algorithm::Gronsfeld) {
+            std::cout << "Введите ключ (цифры): ";
+            std::getline(std::cin, key);
+            if (choice == 1) result = gronsfeld_encrypt(text, key);
+            else result = gronsfeld_decrypt(text, key);
+        }
+        else if (selected_algo == Algorithm::Vigenere) {
+            std::cout << "Введите ключ-слово: ";
+            std::getline(std::cin, key);
+            std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+            if (choice == 1) result = vigenere_encrypt(text, key);
+            else result = vigenere_decrypt(text, key);
+        }
+        
+        std::ofstream out(output_file);
+        out << result;
+        out.close();
+        std::cout << "Результат сохранён в: " << output_file << "\n";
+        wait_for_enter();
+        return;
+    }
+    
+    if (is_plugin_algorithm(selected_algo)) {
+        std::string plugin_name = get_plugin_name(selected_algo);
+        if (!plugin_name.empty()) {
+            file_operation_with_plugin(plugin_name, choice);
+        }
+    } else {
+        std::cout << "Алгоритм не поддерживает работу с файлами\n";
+        wait_for_enter();
+    }
+}
+
+void generate_key_menu() {
+    clear_screen();
+    print_header();
+    std::cout << "=== ГЕНЕРАТОР КЛЮЧЕЙ ===\n";
+    
+    if (!is_plugin_algorithm(selected_algo)) {
+        std::cout << "Генерация ключей доступна только для ГОСТ, Blowfish, AES\n";
+        wait_for_enter();
+        return;
+    }
+    
+    std::string plugin_name = get_plugin_name(selected_algo);
+    std::string save_file;
+    std::cout << "Введите имя файла для сохранения ключа: ";
+    std::cin >> save_file;
+    std::cin.ignore();
+    
+    int result = generate_key(plugin_name, save_file, false, true);
+    if (result == 0) {
+        std::cout << "Ключ сгенерирован и сохранён в: " << save_file << "\n";
+    }
+    wait_for_enter();
+}
+
+void list_algorithms() {
+    clear_screen();
+    std::cout << "=== ДОСТУПНЫЕ АЛГОРИТМЫ ===\n\n";
+    std::cout << "1. Шифр Атбаш        - классический шифр подстановки\n";
+    std::cout << "2. Шифр Гронсфельда  - шифр с числовым ключом\n";
+    std::cout << "3. Шифр Виженера     - шифр с текстовым ключом\n";
+    std::cout << "4. ГОСТ 28147-89     - блочный шифр (256-bit)\n";
+    std::cout << "5. Blowfish          - блочный шифр (128-bit)\n";
+    std::cout << "6. AES-128           - блочный шифр (128-bit)\n\n";
+    wait_for_enter();
+}
+
+void select_algorithm() {
+    clear_screen();
+    print_algorithms();
+    int choice;
+    std::cin >> choice;
+    std::cin.ignore();
+    
+    switch (choice) {
+        case 1: selected_algo = Algorithm::Atbash; break;
+        case 2: selected_algo = Algorithm::Gronsfeld; break;
+        case 3: selected_algo = Algorithm::Vigenere; break;
+        case 4: selected_algo = Algorithm::Gost; break;
+        case 5: selected_algo = Algorithm::Blowfish; break;
+        case 6: selected_algo = Algorithm::Aes; break;
+        default:
+            std::cout << "\nНеверный выбор!\n";
+            wait_for_enter();
+            return;
+    }
+    
+    std::cout << "\nВыбран алгоритм: " << algo_infos[static_cast<int>(selected_algo)].name << "\n";
+    wait_for_enter();
 }
 
 // ============================================================
-// Вспомогательные функции
-// ============================================================
-
-Algorithm parse_algorithm(const std::string& algo) {
-    if (algo == "gost") return Algorithm::GOST;
-    if (algo == "blowfish") return Algorithm::BLOWFISH;
-    if (algo == "aes") return Algorithm::AES;
-    if (algo == "atbash") return Algorithm::ATBASH;
-    if (algo == "gronsfeld") return Algorithm::GRONSFELD;
-    if (algo == "vigenere") return Algorithm::VIGENERE;
-    return Algorithm::UNKNOWN;
-}
-
-Mode parse_mode(const std::string& m) {
-    if (m == "encrypt") return Mode::ENCRYPT;
-    if (m == "decrypt") return Mode::DECRYPT;
-    if (m == "generate-key") return Mode::GENERATE_KEY;
-    return Mode::UNKNOWN;
-}
-
-bool algorithm_needs_key(Algorithm algo) {
-    return algo != Algorithm::ATBASH;
-}
-
-// ============================================================
-// Печать справки
+// CLI РЕЖИМ
 // ============================================================
 
 void print_help(const char* program_name) {
@@ -118,19 +422,16 @@ void print_help(const char* program_name) {
               << "Multi-Algo Cryptotool - шифрование и расшифрование данных\n\n"
               << "Supported algorithms:\n"
               << "  gost       - ГОСТ 28147-89 (256-bit key, 64-bit block)\n"
-              << "  blowfish   - Blowfish (128-bit key, 64-bit block)\n"
+              << "  blowfish   - Blowfish (32-448 bit key, 64-bit block)\n"
               << "  aes        - AES-128 (128-bit key, 128-bit block)\n"
-              << "  atbash     - Atbash substitution cipher (no key)\n"
-              << "  gronsfeld  - Gronsfeld cipher (digit key)\n"
-              << "  vigenere   - Vigenere cipher (letter key)\n\n"
+              << "  dummy      - Тестовый алгоритм (для отладки)\n\n"
               << "Options:\n"
               << "  -h, --help                 показать эту справку\n"
-              << "  -a, --algorithm ALGO       gost | blowfish | aes | atbash | gronsfeld | vigenere\n"
+              << "  -a, --algorithm ALGO       gost | blowfish | aes | dummy\n"
               << "  -m, --mode MODE            encrypt | decrypt | generate-key\n"
               << "  -k, --key FILE             ключ из файла\n"
-              << "  -i, --input FILE           входной файл (если не указан, чтение из stdin)\n"
-              << "  -o, --output FILE          выходной файл (если не указан, вывод в stdout)\n"
-              << "  -t, --text TEXT            текст для шифрования/дешифрования\n"
+              << "  -i, --input FILE           входной файл\n"
+              << "  -o, --output FILE          выходной файл\n"
               << "      --generate-key         сгенерировать ключ\n"
               << "      --save-key FILE        сохранить ключ в файл\n"
               << "      --write-key            записать ключ в stdout\n"
@@ -138,96 +439,44 @@ void print_help(const char* program_name) {
               << "Examples:\n"
               << "  " << program_name << " --help\n"
               << "  " << program_name << " -a gost -m generate-key --save-key key.bin --show-key-hex\n"
-              << "  " << program_name << " -a blowfish -m encrypt -k key.bin -i data -o data.enc\n"
-              << "  " << program_name << " -a gost -m decrypt -k key.bin -i data.enc -o data\n"
-              << "  " << program_name << " -a atbash -m encrypt -t \"Hello World\"\n"
-              << "  " << program_name << " -a gronsfeld -m generate-key --save-key key.txt --show-key-hex\n"
-              << "  " << program_name << " -a vigenere -m encrypt -k key.txt -i data -o data.enc\n";
+              << "  " << program_name << " -a aes -m encrypt -k key.bin -i data.txt -o data.enc\n";
 }
 
-// ============================================================
-// Потоковая обработка данных
-// ============================================================
-
-int process_stream(const std::string& algorithm, const std::string& mode,
-                   const std::vector<uint8_t>& key,
-                   std::istream& input_stream, std::ostream& output_stream) {
-    
-    PluginLoader loader;
-    if (!loader.load_plugin(algorithm)) {
-        std::cerr << "Error: Failed to load plugin for algorithm: " << algorithm << std::endl;
-        return 1;
+std::vector<uint8_t> load_key_from_file(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Error: Cannot open key file: " << filename << std::endl;
+        return {};
     }
-    
-    const AlgorithmInfo* info = loader.get_algorithm_info();
-    if (info && info->key_size > 0 && key.size() != info->key_size) {
-        std::cerr << "Error: Invalid key size. Expected " << info->key_size 
-                  << " bytes, got " << key.size() << std::endl;
-        return 1;
-    }
-    
-    int op_type = (mode == "encrypt") ? OP_ENCRYPT : OP_DECRYPT;
-    
-    const size_t CHUNK_SIZE = 1024 * 1024;
-    std::vector<uint8_t> input_buffer(CHUNK_SIZE);
-    std::vector<uint8_t> output_buffer;
-    
-    size_t total_read = 0;
-    size_t total_written = 0;
-    
-    while (input_stream) {
-        input_stream.read(reinterpret_cast<char*>(input_buffer.data()), CHUNK_SIZE);
-        size_t bytes_read = input_stream.gcount();
-        
-        if (bytes_read == 0) break;
-        total_read += bytes_read;
-        
-        size_t input_size = bytes_read;
-        
-        size_t output_size = loader.get_output_size(input_size, op_type);
-        output_buffer.resize(output_size);
-        MutBuffer out_buf = { output_buffer.data(), output_buffer.size() };
-        ConstBuffer key_buf = { key.data(), key.size() };
-        ConstBuffer in_buf = { input_buffer.data(), input_size };
-        
-        int result;
-        if (mode == "encrypt") {
-            result = loader.encrypt(key_buf, in_buf, &out_buf);
-        } else {
-            result = loader.decrypt(key_buf, in_buf, &out_buf);
-        }
-        
-        if (result != 0) {
-            std::cerr << "Error: Cryptographic operation failed" << std::endl;
-            return 1;
-        }
-        output_buffer.resize(out_buf.size);
-        
-        output_stream.write(reinterpret_cast<char*>(output_buffer.data()), output_buffer.size());
-        total_written += output_buffer.size();
-        
-        if (!output_stream) {
-            std::cerr << "Error: Failed to write output" << std::endl;
-            return 1;
-        }
-        
-        std::cerr << "\rProcessed " << total_read << " bytes, output " << total_written << " bytes" << std::flush;
-    }
-    
-    std::cerr << "\nProcessed " << total_read << " bytes, output " << total_written << " bytes" << std::endl;
-    return 0;
+    std::vector<uint8_t> key((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    return key;
 }
 
-// ============================================================
-// Основная функция
-// ============================================================
+std::vector<uint8_t> load_input(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Error: Cannot open input file: " << filename << std::endl;
+        return {};
+    }
+    std::vector<uint8_t> data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::cerr << "Loaded " << data.size() << " bytes from " << filename << std::endl;
+    return data;
+}
 
-int main(int argc, char* argv[]) {
-    print_welcome();
-    
+bool save_output(const std::vector<uint8_t>& data, const std::string& filename) {
+    std::ofstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Error: Cannot open output file: " << filename << std::endl;
+        return false;
+    }
+    file.write(reinterpret_cast<const char*>(data.data()), data.size());
+    std::cerr << "Saved " << data.size() << " bytes to " << filename << std::endl;
+    return true;
+}
+
+int run_cli_mode(int argc, char* argv[]) {
     if (argc == 1) {
-        print_help(argv[0]);
-        return 0;
+        return -1;
     }
 
     static struct option long_options[] = {
@@ -237,7 +486,6 @@ int main(int argc, char* argv[]) {
         {"key",         required_argument, 0, 'k'},
         {"input",       required_argument, 0, 'i'},
         {"output",      required_argument, 0, 'o'},
-        {"text",        required_argument, 0, 't'},
         {"generate-key",no_argument,       0, 1000},
         {"save-key",    required_argument, 0, 1001},
         {"write-key",   no_argument,       0, 1002},
@@ -245,7 +493,7 @@ int main(int argc, char* argv[]) {
         {0, 0, 0, 0}
     };
 
-    std::string algo_str, mode_str, key_file, input_file, output_file, text_str;
+    std::string algorithm, mode, key_file, input_file, output_file;
     bool gen_key = false;
     std::string save_key_file;
     bool write_key = false;
@@ -254,16 +502,16 @@ int main(int argc, char* argv[]) {
     int opt;
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "ha:m:k:i:o:t:", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "ha:m:k:i:o:", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'h':
                 print_help(argv[0]);
                 return 0;
             case 'a':
-                algo_str = optarg;
+                algorithm = optarg;
                 break;
             case 'm':
-                mode_str = optarg;
+                mode = optarg;
                 break;
             case 'k':
                 key_file = optarg;
@@ -273,9 +521,6 @@ int main(int argc, char* argv[]) {
                 break;
             case 'o':
                 output_file = optarg;
-                break;
-            case 't':
-                text_str = optarg;
                 break;
             case 1000:
                 gen_key = true;
@@ -295,107 +540,135 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    Algorithm algorithm = parse_algorithm(algo_str);
-    if (!algo_str.empty() && algorithm == Algorithm::UNKNOWN) {
-        std::cerr << "Error: Unsupported algorithm '" << algo_str << "'\n";
-        std::cerr << "Supported: gost, blowfish, aes, atbash, gronsfeld, vigenere\n";
+    if (!algorithm.empty() && algorithm != "gost" && algorithm != "blowfish" && algorithm != "aes" && algorithm != "dummy") {
+        std::cerr << "Error: Unsupported algorithm '" << algorithm << "'\n";
+        std::cerr << "Supported: gost, blowfish, aes, dummy\n";
         return 1;
     }
 
-    Mode mode = parse_mode(mode_str);
-    if (!mode_str.empty() && mode == Mode::UNKNOWN) {
-        std::cerr << "Error: Unsupported mode '" << mode_str << "'\n";
-        std::cerr << "Supported: encrypt, decrypt, generate-key\n";
-        return 1;
-    }
-
-    if (mode == Mode::GENERATE_KEY || gen_key) {
-        if (algorithm == Algorithm::UNKNOWN) {
+    if (mode == "generate-key" || gen_key) {
+        if (algorithm.empty()) {
             std::cerr << "Error: Algorithm required for key generation\n";
             return 1;
         }
-        return generate_key(algo_str, save_key_file, write_key, show_key_hex);
+        return generate_key(algorithm, save_key_file, write_key, show_key_hex);
     }
     
-    if (mode == Mode::ENCRYPT || mode == Mode::DECRYPT) {
-        if (algorithm == Algorithm::UNKNOWN) {
+    if (mode == "encrypt" || mode == "decrypt") {
+        if (algorithm.empty()) {
             std::cerr << "Error: Algorithm required for encryption/decryption\n";
             return 1;
         }
         
-        if (algorithm_needs_key(algorithm) && key_file.empty()) {
+        if (key_file.empty()) {
             std::cerr << "Error: Key file required (--key)\n";
             return 1;
         }
         
-        std::vector<uint8_t> key;
-        if (algorithm_needs_key(algorithm)) {
-            std::ifstream key_stream(key_file, std::ios::binary);
-            if (!key_stream) {
-                std::cerr << "Error: Cannot open key file: " << key_file << std::endl;
-                return 1;
-            }
-            key_stream.seekg(0, std::ios::end);
-            size_t key_size = key_stream.tellg();
-            key_stream.seekg(0, std::ios::beg);
-            key.resize(key_size);
-            key_stream.read(reinterpret_cast<char*>(key.data()), key_size);
-            key_stream.close();
-            std::cerr << "Loaded key: " << key_size << " bytes" << std::endl;
-        }
-        
-        if (input_file.empty() && text_str.empty()) {
-            std::cerr << "Error: No input provided (use --input, --text, or stdin)" << std::endl;
+        if (input_file.empty()) {
+            std::cerr << "Error: Input file required (--input)\n";
             return 1;
         }
         
-        if (!text_str.empty()) {
-            std::vector<uint8_t> text_data(text_str.begin(), text_str.end());
-            std::stringstream input_stream;
-            input_stream.write(reinterpret_cast<const char*>(text_data.data()), text_data.size());
-            
-            if (output_file.empty()) {
-                std::stringstream output_stream;
-                int result = process_stream(algo_str, mode_str, key, input_stream, output_stream);
-                if (result != 0) return result;
-                std::cout << output_stream.str() << std::endl;
-            } else {
-                std::ofstream output_stream(output_file, std::ios::binary);
-                if (!output_stream) {
-                    std::cerr << "Error: Cannot open output file: " << output_file << std::endl;
-                    return 1;
-                }
-                return process_stream(algo_str, mode_str, key, input_stream, output_stream);
-            }
-        } else if (!input_file.empty()) {
-            std::ifstream input_stream(input_file, std::ios::binary);
-            if (!input_stream) {
-                std::cerr << "Error: Cannot open input file: " << input_file << std::endl;
-                return 1;
-            }
-            
-            if (output_file.empty()) {
-                return process_stream(algo_str, mode_str, key, input_stream, std::cout);
-            } else {
-                std::ofstream output_stream(output_file, std::ios::binary);
-                if (!output_stream) {
-                    std::cerr << "Error: Cannot open output file: " << output_file << std::endl;
-                    return 1;
-                }
-                return process_stream(algo_str, mode_str, key, input_stream, output_stream);
-            }
-        } else {
-            return process_stream(algo_str, mode_str, key, std::cin, std::cout);
+        if (output_file.empty()) {
+            std::cerr << "Error: Output file required (--output)\n";
+            return 1;
         }
         
+        std::vector<uint8_t> key = load_key_from_file(key_file);
+        if (key.empty()) return 1;
+        
+        std::vector<uint8_t> input_data = load_input(input_file);
+        if (input_data.empty()) return 1;
+        
+        PluginLoader loader;
+        if (!loader.load_plugin(algorithm)) {
+            std::cerr << "Error: Failed to load plugin for algorithm: " << algorithm << std::endl;
+            return 1;
+        }
+        
+        const AlgorithmInfo* info = loader.get_algorithm_info();
+        if (info && key.size() != info->key_size) {
+            std::cerr << "Error: Invalid key size. Expected " << info->key_size 
+                      << " bytes, got " << key.size() << std::endl;
+            return 1;
+        }
+        
+        int op_type = (mode == "encrypt") ? OP_ENCRYPT : OP_DECRYPT;
+        size_t output_size = loader.get_output_size(input_data.size(), op_type);
+        
+        std::vector<uint8_t> output_data(output_size);
+        MutBuffer out_buf = { output_data.data(), output_data.size() };
+        ConstBuffer key_buf = { key.data(), key.size() };
+        ConstBuffer in_buf = { input_data.data(), input_data.size() };
+        
+        int result;
+        if (mode == "encrypt") {
+            result = loader.encrypt(key_buf, in_buf, &out_buf);
+        } else {
+            result = loader.decrypt(key_buf, in_buf, &out_buf);
+        }
+        
+        if (result != 0) {
+            std::cerr << "Error: Cryptographic operation failed (code " << result << ")" << std::endl;
+            return 1;
+        }
+        
+        output_data.resize(out_buf.size);
+        if (!save_output(output_data, output_file)) {
+            return 1;
+        }
+        
+        std::cerr << "Operation completed successfully" << std::endl;
         return 0;
     }
     
-    if (!mode_str.empty()) {
-        std::cerr << "Error: Unknown mode '" << mode_str << "'" << std::endl;
-    } else {
-        std::cerr << "Error: Mode not specified" << std::endl;
-    }
-    std::cerr << "Use --help for usage information" << std::endl;
+    std::cerr << "Error: Unknown mode or missing parameters. Use --help for usage." << std::endl;
     return 1;
+}
+
+// ============================================================
+// MAIN
+// ============================================================
+
+int main(int argc, char* argv[]) {
+    if (argc > 1) {
+        int result = run_cli_mode(argc, argv);
+        if (result != -1) {
+            return result;
+        }
+    }
+    
+    while (true) {
+        clear_screen();
+        print_header();
+        std::cout << "1. Шифрование/расшифрование ТЕКСТА\n";
+        std::cout << "2. Шифрование/расшифрование ФАЙЛА\n";
+        std::cout << "3. Генерация ключа\n";
+        std::cout << "4. Список доступных алгоритмов\n";
+        std::cout << "5. Выбрать алгоритм\n";
+        std::cout << "6. Выход\n";
+        std::cout << "==========================================\n";
+        std::cout << "Ваш выбор: ";
+        
+        int choice;
+        std::cin >> choice;
+        std::cin.ignore();
+        
+        switch (choice) {
+            case 1: text_operation(); break;
+            case 2: file_operation(); break;
+            case 3: generate_key_menu(); break;
+            case 4: list_algorithms(); break;
+            case 5: select_algorithm(); break;
+            case 6:
+                std::cout << "До свидания!\n";
+                return 0;
+            default:
+                std::cout << "Неверный выбор!\n";
+                wait_for_enter();
+        }
+    }
+    
+    return 0;
 }
