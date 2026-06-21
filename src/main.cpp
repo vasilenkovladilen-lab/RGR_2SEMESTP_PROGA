@@ -8,9 +8,7 @@
 #include "crypto/keygen.h"
 #include "plugin/plugin_loader.h"
 
-// ============================================================
 // КЛАССИЧЕСКИЕ ШИФРЫ (для текста)
-// ============================================================
 
 std::string atbash_encrypt(const std::string& text) {
     std::string result = text;
@@ -81,9 +79,7 @@ std::string vigenere_decrypt(const std::string& text, const std::string& key) {
     return result;
 }
 
-// ============================================================
 // УТИЛИТЫ
-// ============================================================
 
 void clear_screen() {
     system("clear");
@@ -95,9 +91,7 @@ void wait_for_enter() {
     std::cin.get();
 }
 
-// ============================================================
 // ENUM CLASS (UpperCamelCase по ТЗ п. 4.4.4.3)
-// ============================================================
 
 enum class Algorithm {
     Atbash = 1,
@@ -108,9 +102,8 @@ enum class Algorithm {
     Aes = 6
 };
 
-// ============================================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
-// ============================================================
+
 
 Algorithm selected_algo = Algorithm::Gost;
 
